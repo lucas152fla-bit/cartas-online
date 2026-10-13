@@ -1,0 +1,30 @@
+# Render Blueprint — deploy grátis do Cartas Online (sem cartão).
+# Crie um "Blueprint" no Render apontando para este repositório.
+services:
+  - type: web
+    name: cartas-online
+    runtime: node
+    plan: free
+    region: ohio
+    buildCommand: npm ci --omit=dev && bash scripts/install-litestream.sh || true
+    startCommand: bash scripts/start.sh
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: HOST
+        value: 0.0.0.0
+      - key: SESSION_SECRET
+        generateValue: true
+      # --- Persistência (opcional): preencha depois de criar o bucket no Backblaze B2 ---
+      - key: LITESTREAM_ENDPOINT      # ex.: https://s3.us-west-004.backblazeb2.com
+        sync: false
+      - key: LITESTREAM_BUCKET        # ex.: cartas-online-db
+        sync: false
+      - key: LITESTREAM_REGION        # ex.: us-west-004 (o "Endpoint" do bucket informa)
+        sync: false
+      - key: LITESTREAM_ACCESS_KEY_ID
+        sync: false
+      - key: LITESTREAM_SECRET_ACCESS_KEY
+        sync: false

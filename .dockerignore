@@ -1,0 +1,12 @@
+node_modules
+bin
+data
+*.log
+.git
+.gitignore
+.dockerignore
+Dockerfile
+.env
+.env.*
+!.env.example
+data/backup

@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f3d2e" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Cartas Online" />
+  <title>Cartas Online</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <link rel="icon" href="/icons/icon-192.png" />
+  <link rel="stylesheet" href="/css/style.css?v=15" />
+</head>
+<body>
+  <div id="toast-host" class="toast-host" aria-live="polite"></div>
+
+  <section id="auth-view" class="auth-view">
+    <div class="auth-card">
+      <div class="brand">
+        <span class="brand-suits">♠ ♥ ♦ ♣</span>
+        <button class="sound-btn" data-sound-toggle type="button" aria-pressed="true" title="Som e vibração: ligados" aria-label="Som e vibração: ligados">🔊</button>
+        <h1>Cartas Online</h1>
+        <p>Poker e 21 com os amigos.</p>
+      </div>
+      <div class="server-url card-link" id="server-url">
+        <span class="muted">Endereço deste servidor</span>
+        <span class="srv" id="srv-here"></span>
+        <button class="btn ghost tiny" id="btn-invite" type="button">🔗 Convidar</button>
+      </div>
+      <form id="enter-form" class="auth-form">
+        <label>Seu apelido<input name="nickname" autocomplete="username" required minlength="3" maxlength="20" placeholder="ex: Lukaz, Rafa, Ju" /></label>
+        <label>Nome de exibição<input name="displayName" maxlength="40" placeholder="Como querem te chamar (só na 1ª vez)" /></label>
+        <button class="btn primary" type="submit">Entrar na mesa</button>
+        <p class="muted" style="font-size:.85rem;margin-top:10px">Sem senha: escolha (ou repita) seu apelido e pronto. Cada um usa o mesmo apelido todas as vezes.</p>
+      </form>
+      <p class="auth-error" id="auth-error"></p>
+    </div>
+    <details class="lan-panel">
+      <summary>Jogar online / modo LAN — trocar de servidor</summary>
+      <p class="muted" style="font-size:.9rem;margin-top:8px">Em casa, um PC hospeda e os amigos entram pelo IP da rede. Para isso, é bom trocar o endereço aqui ou abrir direto no navegador do celular.</p>
+      <div class="lan-row">
+        <input id="lan-url" placeholder="http://192.168.1.10:3000" value="" />
+        <button class="btn primary" id="lan-go" type="button">Abrir</button>
+      </div>
+      <p class="muted" style="font-size:.85rem">Dica: para jogar de qualquer lugar, hospede em um VPS (Render/Railway/Fly) e use o link HTTPS dele — veja o README.</p>
+    </details>
+  </section>
+
+  <div id="app-view" class="app-view hidden">
+    <aside class="sidebar">
+      <div class="sidebar-brand">♠ Cartas<span>Online</span><button class="sound-btn" data-sound-toggle type="button" aria-pressed="true" title="Som e vibração: ligados" aria-label="Som e vibração: ligados">🔊</button></div>
+      <nav class="nav">
+        <button class="nav-btn active" data-nav="conversas"><span class="ico">💬</span>Conversas<span class="badge" id="nav-badge-conversas"></span></button>
+        <button class="nav-btn" data-nav="jogar"><span class="ico">🃏</span>Jogar</button>
+        <button class="nav-btn" data-nav="amigos"><span class="ico">👥</span>Amigos<span class="badge" id="nav-badge-amigos"></span></button>
+        <button class="nav-btn" data-nav="carteira"><span class="ico">💰</span>Carteira</button>
+        <button class="nav-btn" data-nav="perfil"><span class="ico">🙂</span>Perfil</button>
+      </nav>
+      <div class="sidebar-user" id="sidebar-user"></div>
+    </aside>
+
+    <main class="content">
+      <button class="mobile-menu" id="mobile-menu" aria-label="Menu">☰</button>
+
+      <section class="pane" id="pane-conversas">
+        <div class="pane-head">
+          <h2>Conversas</h2>
+          <button class="btn ghost" id="btn-new-group">＋ Grupo</button>
+        </div>
+        <div class="convo-list" id="convo-list"></div>
+      </section>
+
+      <section class="pane hidden" id="pane-amigos">
+        <div class="pane-head">
+          <h2>Amigos</h2>
+        </div>
+        <div class="search-row">
+          <input id="friend-search" placeholder="Buscar por apelido para adicionar…" />
+          <div class="search-results" id="friend-search-results"></div>
+        </div>
+        <div id="friend-requests"></div>
+        <div class="friend-list" id="friend-list"></div>
+      </section>
+
+      <section class="pane hidden" id="pane-carteira">
+        <div class="pane-head"><h2>Carteira</h2></div>
+        <div class="wallet-cards" id="wallet-cards"></div>
+        <div class="panel">
+          <h3>Converter moedas</h3>
+          <p class="rate-note" id="rate-note"></p>
+          <div class="convert-row">
+            <select id="convert-from"><option value="gemas">Gemas 💎</option><option value="fichas">Fichas 🪙</option></select>
+            <input id="convert-amount" type="number" min="1" step="1" value="1" />
+            <button class="btn" id="convert-swap" title="Inverter">⇄</button>
+            <select id="convert-to"><option value="fichas">Fichas 🪙</option><option value="gemas">Gemas 💎</option></select>
+          </div>
+          <p class="convert-preview" id="convert-preview"></p>
+          <button class="btn primary" id="convert-btn">Converter</button>
+        </div>
+        <div class="panel">
+          <h3>Extrato</h3>
+          <div class="tx-list" id="tx-list"></div>
+        </div>
+      </section>
+
+      <section class="pane hidden" id="pane-jogar">
+        <div class="pane-head">
+          <h2>Jogar</h2>
+          <div class="game-tabs">
+            <button class="game-tab active" data-game="bj">🃏 Mesa de 21</button>
+            <button class="game-tab" data-game="pk">♠ Poker</button>
+          </div>
+        </div>
+
+        <div id="game-bj" class="game-body">
+          <div class="pane-actions">
+            <button class="btn ghost" id="bj-rank">🏆 Rank</button>
+            <button class="btn ghost" id="bj-invite">🔗 Convidar</button>
+            <button class="btn primary" id="bj-create">＋ Nova mesa</button>
+          </div>
+          <div id="bj-lobby" class="bj-lobby"></div>
+          <div id="bj-table" class="bj-table hidden">
+            <div class="bj-top">
+              <button class="btn ghost" id="bj-leave">← Sair da mesa</button>
+              <strong id="bj-table-name"></strong>
+              <span class="bj-status" id="bj-status"></span>
+              <span class="bj-phase" id="bj-phase"></span>
+              <button class="btn ghost" id="bj-invite2" title="Chamar amigos">🔗</button>
+            </div>
+            <div class="bj-scene-wrap">
+              <div id="bj-scene" class="bj-scene"></div>
+            </div>
+            <div id="bj-voice" class="bj-voice" aria-live="polite"></div>
+            <div id="bj-me-bar" class="bj-me-bar hidden"></div>
+            <div class="bj-controls" id="bj-controls"></div>
+          </div>
+        </div>
+
+        <div id="game-pk" class="game-body hidden">
+          <div class="pane-actions">
+            <button class="btn ghost" id="pk-rank">🏆 Rank</button>
+            <button class="btn ghost" id="pk-invite">🔗 Convidar</button>
+            <button class="btn primary" id="pk-create">＋ Nova mesa</button>
+          </div>
+          <div id="pk-lobby" class="pk-lobby"></div>
+          <div id="pk-table" class="pk-table hidden">
+            <div class="pk-top">
+              <button class="btn ghost" id="pk-leave">← Sair da mesa</button>
+              <strong id="pk-table-name"></strong>
+              <span class="bj-status" id="pk-status"></span>
+              <button class="btn ghost" id="pk-emote-btn" title="Interações">🎭</button>
+              <button class="btn ghost" id="pk-invite2" title="Chamar amigos">🔗</button>
+            </div>
+            <div class="pk-scene-wrap">
+              <div id="pk-scene" class="pk-scene"></div>
+            </div>
+            <div id="pk-hero" class="pk-hero hidden"></div>
+            <div class="pk-controls" id="pk-controls"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pane hidden" id="pane-perfil">
+        <div class="pane-head"><h2>Meu perfil</h2></div>
+        <form class="profile-form" id="profile-form">
+          <div class="avatar-preview" id="avatar-preview"></div>
+          <label>Nome de exibição<input name="displayName" maxlength="40" /></label>
+          <label>Avatar<input name="avatar" maxlength="8" placeholder="Cole um emoji, ex: 🐯" /></label>
+          <div class="emoji-row" id="emoji-row"></div>
+          <label>Cor<input name="color" type="color" /></label>
+          <label>Frase de status<input name="statusText" maxlength="60" placeholder="Bora de uma mesa?" /></label>
+          <label>Bio<textarea name="bio" maxlength="200" rows="3"></textarea></label>
+          <div class="char-customizer">
+            <h3>Meu boneco na mesa</h3>
+            <div class="char-custom">
+              <div class="char-preview-zone" id="char-preview"></div>
+              <div class="char-picks">
+                <div class="char-row"><span class="char-row-label">Pele</span><div class="char-swatches" id="pick-skin"></div></div>
+                <div class="char-row"><span class="char-row-label">Cabelo</span><div class="char-swatches" id="pick-hair"></div></div>
+                <div class="char-row"><span class="char-row-label">Roupa</span><div class="char-swatches" id="pick-shirt"></div></div>
+                <div class="char-row"><span class="char-row-label">Chapéu</span><div class="char-swatches" id="pick-hat"></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="char-customizer">
+            <h3>Minha comemoração de campeão</h3>
+            <div class="celeb-pick" id="celeb-pick"></div>
+            <p class="muted-sm">Toca quando você vence uma rodada de 21 ou uma mão de poker.</p>
+          </div>
+          <button class="btn primary" type="submit">Salvar perfil</button>
+        </form>
+      </section>
+    </main>
+
+    <section class="chat-pane hidden" id="chat-pane">
+      <header class="chat-head">
+        <button class="btn ghost back" id="chat-back">←</button>
+        <div class="chat-avatar" id="chat-avatar"></div>
+        <div class="chat-title">
+          <strong id="chat-name"></strong>
+          <small id="chat-sub"></small>
+        </div>
+        <button class="btn ghost" id="chat-add-member" title="Adicionar ao grupo">＋</button>
+      </header>
+      <div class="messages" id="messages"></div>
+      <div class="typing" id="typing"></div>
+      <form class="composer" id="composer">
+        <textarea id="composer-input" rows="1" placeholder="Escreva uma mensagem…"></textarea>
+        <button class="btn primary" type="submit">Enviar</button>
+      </form>
+    </section>
+  </div>
+
+  <div class="modal-host hidden" id="modal-host">
+    <div class="modal" id="modal"></div>
+  </div>
+
+  <div class="coin-layer" id="coin-layer"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/js/app.js?v=15"></script>
+</body>
+</html>
