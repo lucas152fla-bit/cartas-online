@@ -6,7 +6,7 @@ services:
     runtime: node
     plan: free
     region: ohio
-    buildCommand: npm ci --omit=dev && bash scripts/install-litestream.sh || true
+    buildCommand: npm ci --omit=dev && bash scripts/install-litestream.sh
     startCommand: bash scripts/start.sh
     healthCheckPath: /
     autoDeploy: true
