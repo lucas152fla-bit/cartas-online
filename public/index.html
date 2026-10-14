@@ -11,7 +11,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
   <link rel="icon" href="/icons/icon-192.png" />
-  <link rel="stylesheet" href="/css/style.css?v=15" />
+  <link rel="stylesheet" href="/css/style.css?v=16" />
 </head>
 <body>
   <div id="toast-host" class="toast-host" aria-live="polite"></div>
@@ -29,12 +29,36 @@
         <span class="srv" id="srv-here"></span>
         <button class="btn ghost tiny" id="btn-invite" type="button">🔗 Convidar</button>
       </div>
-      <form id="enter-form" class="auth-form">
+      <div class="tabs auth-modes" id="auth-modes">
+        <button class="tab active" type="button" data-auth-tab="simple">Sou novo aqui</button>
+        <button class="tab" type="button" data-auth-tab="have">Já tenho conta</button>
+      </div>
+
+      <form id="enter-form" class="auth-form" data-auth-pane="simple">
         <label>Seu apelido<input name="nickname" autocomplete="username" required minlength="3" maxlength="20" placeholder="ex: Lukaz, Rafa, Ju" /></label>
         <label>Nome de exibição<input name="displayName" maxlength="40" placeholder="Como querem te chamar (só na 1ª vez)" /></label>
         <button class="btn primary" type="submit">Entrar na mesa</button>
-        <p class="muted" style="font-size:.85rem;margin-top:10px">Sem senha: escolha (ou repita) seu apelido e pronto. Cada um usa o mesmo apelido todas as vezes.</p>
+        <p class="muted auth-hint">Sem senha: escolha (ou repita) seu apelido e pronto. Cada um usa o mesmo apelido todas as vezes.</p>
       </form>
+
+      <div id="have-account" class="auth-have hidden" data-auth-pane="have">
+        <div class="tabs sub-tabs" id="have-modes">
+          <button class="tab active" type="button" data-have-tab="reserve">Apelido + email</button>
+          <button class="tab" type="button" data-have-tab="password">Apelido + senha</button>
+        </div>
+        <form id="reserve-form" class="auth-form" data-have-pane="reserve">
+          <label>Apelido<input name="nickname" autocomplete="username" required minlength="3" maxlength="20" placeholder="ex: Lukaz" /></label>
+          <label>Email<input name="email" type="email" autocomplete="email" required placeholder="voce@email.com" /></label>
+          <button class="btn primary" type="submit">Entrar com email</button>
+          <p class="muted auth-hint">O email é a sua chave de recuperação: é por ele que você entra de outro aparelho quando ainda não tem senha.</p>
+        </form>
+        <form id="password-form" class="auth-form hidden" data-have-pane="password">
+          <label>Apelido<input name="nickname" autocomplete="username" required minlength="3" maxlength="20" placeholder="ex: Lukaz" /></label>
+          <label>Senha<input name="password" type="password" autocomplete="current-password" required minlength="4" placeholder="sua senha" /></label>
+          <button class="btn primary" type="submit">Entrar com senha</button>
+        </form>
+      </div>
+
       <p class="auth-error" id="auth-error"></p>
     </div>
     <details class="lan-panel">
@@ -55,6 +79,7 @@
         <button class="nav-btn active" data-nav="conversas"><span class="ico">💬</span>Conversas<span class="badge" id="nav-badge-conversas"></span></button>
         <button class="nav-btn" data-nav="jogar"><span class="ico">🃏</span>Jogar</button>
         <button class="nav-btn" data-nav="amigos"><span class="ico">👥</span>Amigos<span class="badge" id="nav-badge-amigos"></span></button>
+        <button class="nav-btn" data-nav="suporte"><span class="ico">💡</span>Suporte</button>
         <button class="nav-btn" data-nav="carteira"><span class="ico">💰</span>Carteira</button>
         <button class="nav-btn" data-nav="perfil"><span class="ico">🙂</span>Perfil</button>
       </nav>
@@ -162,16 +187,45 @@
         </div>
       </section>
 
+      <section class="pane hidden" id="pane-suporte">
+        <div class="pane-head"><h2>Suporte</h2></div>
+        <p class="support-intro muted">Mural público de ideias, dúvidas e feedback. Todo mundo que usa o app vê o que for publicado aqui.</p>
+        <form class="support-compose" id="support-form">
+          <textarea id="support-input" rows="2" maxlength="1000" placeholder="Compartilhe uma ideia, dúvida ou feedback…"></textarea>
+          <div class="support-compose-actions">
+            <span class="muted-sm" id="support-count"></span>
+            <button class="btn primary" type="submit" id="support-submit">Publicar</button>
+          </div>
+        </form>
+        <div class="support-list" id="support-list"></div>
+      </section>
+
       <section class="pane hidden" id="pane-perfil">
         <div class="pane-head"><h2>Meu perfil</h2></div>
         <form class="profile-form" id="profile-form">
           <div class="avatar-preview" id="avatar-preview"></div>
+          <div class="avatar-photo-row">
+            <input type="file" id="avatar-file" accept="image/*" hidden />
+            <button class="btn" type="button" id="btn-choose-photo">📷 Escolher foto</button>
+            <button class="btn ghost hidden" type="button" id="btn-remove-photo">Remover foto</button>
+            <span class="muted-sm" id="avatar-photo-hint">A foto aparece no seu avatar em todo o app.</span>
+          </div>
           <label>Nome de exibição<input name="displayName" maxlength="40" /></label>
           <label>Avatar<input name="avatar" maxlength="8" placeholder="Cole um emoji, ex: 🐯" /></label>
           <div class="emoji-row" id="emoji-row"></div>
           <label>Cor<input name="color" type="color" /></label>
           <label>Frase de status<input name="statusText" maxlength="60" placeholder="Bora de uma mesa?" /></label>
           <label>Bio<textarea name="bio" maxlength="200" rows="3"></textarea></label>
+          <div class="char-customizer">
+            <h3>Email e senha</h3>
+            <label>Email<input id="account-email" type="email" maxlength="120" placeholder="voce@email.com" /></label>
+            <p class="muted-sm">O email é a sua chave de recuperação: sem senha, é por ele que você entra de outro aparelho.</p>
+            <button class="btn" type="button" id="email-save">Salvar email</button>
+            <hr class="soft-sep" />
+            <label>Definir/Trocar senha<input id="account-password" type="password" minlength="4" autocomplete="new-password" placeholder="mínimo 4 caracteres" /></label>
+            <label id="current-password-wrap" class="hidden">Senha atual<input id="account-current" type="password" autocomplete="current-password" /></label>
+            <button class="btn" type="button" id="password-save">Salvar senha</button>
+          </div>
           <div class="char-customizer">
             <h3>Meu boneco na mesa</h3>
             <div class="char-custom">
@@ -220,6 +274,6 @@
   <div class="coin-layer" id="coin-layer"></div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/js/app.js?v=15"></script>
+  <script type="module" src="/js/app.js?v=16"></script>
 </body>
 </html>

@@ -10,11 +10,28 @@ import {
   addMember,
   isMember,
   publicUser,
+  selfUser,
+  findUserByEmail,
+  setUserEmail,
+  setUserAvatarImage,
+  listSupportPosts,
+  createSupportPost,
   walletOf,
   addTransaction,
   CELEBRATIONS,
 } from './db.js';
-import { createUser, verifyLogin, requireAuth, sessionPayload, ensureGuestUser, ensureNickUser, HttpError } from './auth.js';
+import {
+  createUser,
+  verifyLogin,
+  loginByReserve,
+  setUserPassword,
+  checkPassword,
+  requireAuth,
+  sessionPayload,
+  ensureGuestUser,
+  ensureNickUser,
+  HttpError,
+} from './auth.js';
 import { blackjackRouter } from './games/blackjack.js';
 import { pokerRouter } from './games/poker.js';
 
@@ -44,8 +61,8 @@ api.post('/enter', wrap((req, res) => {
 }));
 
 api.post('/register', wrap((req, res) => {
-  const { nickname, password, displayName } = req.body || {};
-  const user = createUser({ nickname, password, displayName });
+  const { nickname, password, displayName, email } = req.body || {};
+  const user = createUser({ nickname, password, displayName, email });
   res.status(201).json(sessionPayload(user));
 }));
 
@@ -56,8 +73,15 @@ api.post('/login', wrap((req, res) => {
   res.json(sessionPayload(user));
 }));
 
+api.post('/login-reserve', wrap((req, res) => {
+  const { nickname, email } = req.body || {};
+  const user = loginByReserve(nickname, email);
+  if (!user) throw new HttpError(401, 'Apelido ou email não conferem.');
+  res.json(sessionPayload(user));
+}));
+
 api.get('/me', requireAuth, wrap((req, res) => {
-  res.json({ user: publicUser(req.user), wallet: walletOf(req.user.id) });
+  res.json({ user: selfUser(req.user), wallet: walletOf(req.user.id) });
 }));
 
 api.patch('/me', requireAuth, wrap((req, res) => {
@@ -74,11 +98,85 @@ api.patch('/me', requireAuth, wrap((req, res) => {
   const hats = ['none', 'cap', 'beanie', 'tophat', 'crown', 'horns'];
   const hat = hats.includes(b.hat) ? b.hat : req.user.hat;
   const celebration = CELEBRATIONS.includes(b.celebration) ? b.celebration : req.user.celebration;
+
+  let email = req.user.email || null;
+  if ('email' in b) {
+    if (b.email == null || String(b.email).trim() === '') {
+      email = null;
+    } else {
+      const norm = String(b.email).trim().toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(norm)) throw new HttpError(400, 'Email inválido.');
+      const other = findUserByEmail(norm);
+      if (other && other.id !== req.user.id) throw new HttpError(409, 'Email já cadastrado.');
+      email = norm;
+    }
+  }
+
+  if (b.newPassword != null && String(b.newPassword) !== '') {
+    if (String(b.newPassword).length < 4) throw new HttpError(400, 'A senha precisa ter ao menos 4 caracteres.');
+    const allowed = !req.user.password_hash || checkPassword(req.user, b.currentPassword);
+    if (!allowed) throw new HttpError(401, 'Senha atual incorreta.');
+    setUserPassword(req.user.id, b.newPassword);
+  }
+
+  let avatarImage = req.user.avatar_image || null;
+  if ('avatarImage' in b) {
+    if (b.avatarImage == null || String(b.avatarImage) === '') {
+      avatarImage = null;
+    } else {
+      const dataUrl = String(b.avatarImage);
+      if (!/^data:image\/(png|jpeg|webp);base64,/i.test(dataUrl)) throw new HttpError(400, 'Imagem inválida.');
+      if (dataUrl.length > 400000) throw new HttpError(400, 'Imagem muito grande.');
+      avatarImage = dataUrl;
+    }
+  }
+
   db.prepare(
-    `UPDATE users SET display_name = ?, avatar = ?, color = ?, bio = ?, status_text = ?, skin = ?, hair = ?, shirt = ?, hat = ?, celebration = ?
+    `UPDATE users SET display_name = ?, avatar = ?, color = ?, bio = ?, status_text = ?, skin = ?, hair = ?, shirt = ?, hat = ?, celebration = ?, email = ?, avatar_image = ?
      WHERE id = ?`
-  ).run(displayName, avatar, color, bio, statusText, skin, hair, shirt, hat, celebration, req.user.id);
-  res.json({ user: publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id)) });
+  ).run(displayName, avatar, color, bio, statusText, skin, hair, shirt, hat, celebration, email, avatarImage, req.user.id);
+  res.json({ user: selfUser(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id)) });
+}));
+
+api.get('/avatar/:id', wrap((req, res) => {
+  const id = Number(req.params.id);
+  const row = db.prepare('SELECT avatar_image FROM users WHERE id = ?').get(id);
+  if (!row || !row.avatar_image) throw new HttpError(404, 'Avatar não encontrado.');
+  const match = /^data:image\/(png|jpeg|webp);base64,(.*)$/is.exec(row.avatar_image);
+  if (!match) throw new HttpError(404, 'Avatar não encontrado.');
+  const buf = Buffer.from(match[2], 'base64');
+  res.setHeader('Content-Type', `image/${match[1].toLowerCase()}`);
+  res.setHeader('Cache-Control', 'public, max-age=300');
+  res.send(buf);
+}));
+
+api.get('/support', requireAuth, wrap((req, res) => {
+  const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 200);
+  const posts = listSupportPosts(limit).map((p) => ({
+    id: p.id,
+    body: p.body,
+    createdAt: p.createdAt,
+    author: publicUser(p.author),
+  }));
+  res.json({ posts });
+}));
+
+api.post('/support', requireAuth, wrap((req, res) => {
+  const body = String((req.body || {}).body || '').trim();
+  if (body.length < 1 || body.length > 500) throw new HttpError(400, 'O post precisa ter entre 1 e 500 caracteres.');
+  const post = createSupportPost(req.user.id, body);
+  res.status(201).json({
+    post: { id: post.id, body: post.body, createdAt: post.created_at, author: publicUser(req.user) },
+  });
+}));
+
+api.delete('/support/:id', requireAuth, wrap((req, res) => {
+  const id = Number(req.params.id);
+  const row = db.prepare('SELECT * FROM support_posts WHERE id = ?').get(id);
+  if (!row) throw new HttpError(404, 'Post não encontrado.');
+  if (row.user_id !== req.user.id) throw new HttpError(403, 'Você só pode excluir seus próprios posts.');
+  db.prepare('DELETE FROM support_posts WHERE id = ?').run(id);
+  res.json({ ok: true });
 }));
 
 api.get('/users/search', requireAuth, wrap((req, res) => {

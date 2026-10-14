@@ -1,6 +1,6 @@
 import { api } from './api.js';
 import { state } from './state.js';
-import { $, $$, escapeHtml, toast, openModal, closeModal, avatarHtml } from './ui.js';
+import { $, $$, escapeHtml, toast, openModal, closeModal, userAvatarHtml } from './ui.js';
 import { cardHtml, DECKS } from './blackjack.js';
 import { avatarSpec, characterCanvas } from './avatar3d.js';
 import { EMOTES, emoteById } from './emotes.js';
@@ -26,7 +26,7 @@ function dollHtml(p, size = 62, opts = {}) {
     const canvas = characterCanvas(spec, size, { sit: !!opts.sit, emote: opts.emote || null });
     return `<img class="doll" alt="" draggable="false" src="${canvas.toDataURL()}">`;
   } catch {
-    return avatarHtml(p.avatar, p.color, 'sm');
+    return userAvatarHtml({ id: p.userId, avatar: p.avatar, color: p.color, hasPhoto: p.hasPhoto }, 'sm');
   }
 }
 

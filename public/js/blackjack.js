@@ -1,6 +1,6 @@
 import { api } from './api.js';
 import { state } from './state.js';
-import { $, escapeHtml, toast, openModal, closeModal, avatarHtml } from './ui.js';
+import { $, escapeHtml, toast, openModal, closeModal, userAvatarHtml } from './ui.js';
 import { avatarSpec, characterCanvas, AVATAR_DEFAULTS } from './avatar3d.js';
 import { celebrate } from './celebrate.js';
 import { playSfx } from './sound.js';
@@ -956,7 +956,7 @@ async function loadRank(game) {
       ${[top[1], top[0], top[2]].map((r) => (r ? `
         <div class="podium-item pos-${r.pos}">
           <span class="podium-medal">${medals[r.pos - 1]}</span>
-          <span class="podium-ava">${avatarHtml(r.avatar, r.color, 'md')}</span>
+          <span class="podium-ava">${userAvatarHtml(r, 'md')}</span>
           <strong class="podium-name">${escapeHtml(r.name)}</strong>
           <span class="podium-wins"><b>${r.wins}</b> ${unit(r.wins)}</span>
           <span class="podium-net ${netCls(r.net || 0)}">${netTxt(r.net)}</span>
@@ -967,7 +967,7 @@ async function loadRank(game) {
   const rowHtml = (r) => `
     <div class="rank-row ${r.pos <= 3 ? 'top' : ''}">
       <span class="rank-pos"><b>${medals[r.pos - 1] || `${r.pos}º`}</b></span>
-      <span class="rank-ava">${avatarHtml(r.avatar, r.color, 'sm')}</span>
+      <span class="rank-ava">${userAvatarHtml(r, 'sm')}</span>
       <div class="rank-mid">
         <strong>${escapeHtml(r.name)}</strong>
         <small class="muted">${r.games} ${isPoker ? `mão${r.games === 1 ? '' : 's'}` : `partida${r.games === 1 ? '' : 's'}`}${isPoker ? '' : ` · média ${r.avgScore ?? '—'}`}</small>

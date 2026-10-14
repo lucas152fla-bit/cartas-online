@@ -2,7 +2,7 @@ import { randomBytes, scryptSync, timingSafeEqual, createHmac } from 'node:crypt
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { db, now, publicUser, walletOf, ensureGlobalMember } from './db.js';
+import { db, now, selfUser, findUserByNickname, walletOf, ensureGlobalMember } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const secretFile = join(__dirname, '..', 'data', '.secret');
@@ -19,7 +19,7 @@ const TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
 const hash = (password, salt) => scryptSync(password, salt, 64).toString('hex');
 
-export function createUser({ nickname, password, displayName }) {
+export function createUser({ nickname, password, displayName, email }) {
   const nick = String(nickname || '').trim();
   if (nick.length < 3 || nick.length > 20) throw new HttpError(400, 'O apelido precisa ter entre 3 e 20 caracteres.');
   if (!/^[a-zA-Z0-9_.-]+$/.test(nick)) throw new HttpError(400, 'Use apenas letras, números, ponto, hífen ou underline no apelido.');
@@ -27,29 +27,58 @@ export function createUser({ nickname, password, displayName }) {
   const existing = db.prepare('SELECT id FROM users WHERE nickname = ?').get(nick);
   if (existing) throw new HttpError(409, 'Esse apelido já está em uso.');
 
+  let emailNorm = null;
+  if (email != null && String(email).trim() !== '') {
+    emailNorm = String(email).trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailNorm)) throw new HttpError(400, 'Email inválido.');
+    if (db.prepare('SELECT id FROM users WHERE email = ?').get(emailNorm)) throw new HttpError(409, 'Email já cadastrado.');
+  }
+
   const salt = randomBytes(16).toString('hex');
   const passwordHash = hash(String(password), salt);
   const display = (String(displayName || '').trim() || nick).slice(0, 40);
   const info = db
     .prepare(
-      `INSERT INTO users (nickname, password_hash, salt, display_name, created_at)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO users (nickname, email, password_hash, salt, display_name, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
     )
-    .run(nick, passwordHash, salt, display, now());
+    .run(nick, emailNorm, passwordHash, salt, display, now());
   const userId = Number(info.lastInsertRowid);
   walletOf(userId);
   ensureGlobalMember(userId);
   return getUser(userId);
 }
 
+export function checkPassword(user, password) {
+  if (!user || !user.salt || !user.password_hash) return false;
+  const candidate = Buffer.from(hash(String(password || ''), user.salt), 'hex');
+  const expected = Buffer.from(user.password_hash, 'hex');
+  return candidate.length === expected.length && timingSafeEqual(candidate, expected);
+}
+
 export function verifyLogin(nickname, password) {
-  const row = db.prepare('SELECT * FROM users WHERE nickname = ?').get(String(nickname || '').trim());
+  const row = findUserByNickname(nickname);
   if (!row) return null;
-  const candidate = Buffer.from(hash(String(password || ''), row.salt), 'hex');
-  const expected = Buffer.from(row.password_hash, 'hex');
-  if (candidate.length !== expected.length || !timingSafeEqual(candidate, expected)) return null;
+  if (!checkPassword(row, password)) return null;
   ensureGlobalMember(row.id);
   return row;
+}
+
+export function loginByReserve(nickname, email) {
+  const row = findUserByNickname(nickname);
+  if (!row) return null;
+  const normEmail = String(email || '').trim().toLowerCase();
+  const userEmail = String(row.email || '').trim().toLowerCase();
+  if (!normEmail || !userEmail || userEmail !== normEmail) return null;
+  ensureGlobalMember(row.id);
+  return row;
+}
+
+export function setUserPassword(userId, newPassword) {
+  if (!newPassword || String(newPassword).length < 4) throw new HttpError(400, 'A senha precisa ter ao menos 4 caracteres.');
+  const salt = randomBytes(16).toString('hex');
+  const passwordHash = hash(String(newPassword), salt);
+  db.prepare('UPDATE users SET password_hash = ?, salt = ? WHERE id = ?').run(passwordHash, salt, userId);
 }
 
 export function getUser(id) {
@@ -101,7 +130,7 @@ export function requireAuth(req, res, next) {
 export function sessionPayload(user) {
   return {
     token: issueToken(user.id),
-    user: publicUser(user),
+    user: selfUser(user),
     wallet: walletOf(user.id),
   };
 }

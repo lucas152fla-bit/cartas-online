@@ -17,6 +17,8 @@ db.exec(`
 CREATE TABLE IF NOT EXISTS users (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   nickname      TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  email         TEXT,
+  avatar_image  TEXT,
   password_hash TEXT NOT NULL,
   salt          TEXT NOT NULL,
   display_name  TEXT NOT NULL,
@@ -157,6 +159,14 @@ CREATE TABLE IF NOT EXISTS poker_plays (
   at       TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_pkplays_round ON poker_plays(round_id);
+
+CREATE TABLE IF NOT EXISTS support_posts (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body       TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_support_created ON support_posts(created_at DESC);
 `);
 
 const userColumns = new Set(db.prepare('PRAGMA table_info(users)').all().map((c) => c.name));
@@ -168,6 +178,8 @@ ensureColumn('hair', "TEXT NOT NULL DEFAULT '#5b3a2a'");
 ensureColumn('shirt', "TEXT NOT NULL DEFAULT '#3b82f6'");
 ensureColumn('hat', "TEXT NOT NULL DEFAULT 'none'");
 ensureColumn('celebration', "TEXT NOT NULL DEFAULT 'confetti'");
+ensureColumn('email', 'TEXT');
+ensureColumn('avatar_image', 'TEXT');
 
 const pokerRoundColumns = new Set(db.prepare('PRAGMA table_info(poker_rounds)').all().map((c) => c.name));
 if (!pokerRoundColumns.has('deck_style')) {
@@ -249,8 +261,86 @@ export function publicUser(row) {
       hat: row.hat || 'none',
     },
     celebration: row.celebration || 'confetti',
+    hasPhoto: !!row.avatar_image,
     createdAt: row.created_at,
   };
+}
+
+export function selfUser(row) {
+  if (!row) return null;
+  return {
+    ...publicUser(row),
+    email: row.email || null,
+    hasEmail: !!row.email,
+    hasPassword: !!row.password_hash,
+  };
+}
+
+export function findUserByNickname(nickname) {
+  return db.prepare('SELECT * FROM users WHERE nickname = ?').get(String(nickname || '').trim());
+}
+
+export function findUserByEmail(email) {
+  const norm = String(email || '').trim().toLowerCase();
+  if (!norm) return null;
+  return db.prepare('SELECT * FROM users WHERE email = ?').get(norm);
+}
+
+export function setUserEmail(userId, email) {
+  const norm = email == null ? null : String(email).trim().toLowerCase() || null;
+  db.prepare('UPDATE users SET email = ? WHERE id = ?').run(norm, userId);
+}
+
+export function setUserAvatarImage(userId, dataUrl) {
+  const value = dataUrl == null || dataUrl === '' ? null : String(dataUrl);
+  db.prepare('UPDATE users SET avatar_image = ? WHERE id = ?').run(value, userId);
+}
+
+export function listSupportPosts(limit = 100) {
+  const lim = Math.min(Math.max(Number(limit) || 100, 1), 200);
+  return db
+    .prepare(
+      `SELECT p.id AS id, p.body AS body, p.created_at AS created_at,
+              u.id AS author_id, u.nickname AS nickname, u.display_name AS display_name,
+              u.avatar AS avatar, u.color AS color, u.bio AS bio,
+              u.status_text AS status_text, u.skin AS skin, u.hair AS hair,
+              u.shirt AS shirt, u.hat AS hat, u.celebration AS celebration,
+              u.avatar_image AS avatar_image, u.created_at AS author_created_at
+       FROM support_posts p
+       JOIN users u ON u.id = p.user_id
+       ORDER BY p.created_at DESC
+       LIMIT ?`
+    )
+    .all(lim)
+    .map((r) => ({
+      id: r.id,
+      body: r.body,
+      createdAt: r.created_at,
+      author: {
+        id: r.author_id,
+        nickname: r.nickname,
+        display_name: r.display_name,
+        avatar: r.avatar,
+        color: r.color,
+        bio: r.bio,
+        status_text: r.status_text,
+        skin: r.skin,
+        hair: r.hair,
+        shirt: r.shirt,
+        hat: r.hat,
+        celebration: r.celebration,
+        avatar_image: r.avatar_image,
+        created_at: r.author_created_at,
+      },
+    }));
+}
+
+export function createSupportPost(userId, body) {
+  const text = String(body).trim();
+  const info = db
+    .prepare('INSERT INTO support_posts (user_id, body, created_at) VALUES (?, ?, ?)')
+    .run(userId, text, now());
+  return db.prepare('SELECT * FROM support_posts WHERE id = ?').get(info.lastInsertRowid);
 }
 
 export function walletOf(userId) {

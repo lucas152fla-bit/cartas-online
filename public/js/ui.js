@@ -29,7 +29,26 @@ export function formatDateTime(iso) {
 }
 
 export function avatarHtml(avatar, color, size = '') {
-  return `<span class="avatar ${size}" style="background:${color}22;border-color:${color}55">${escapeHtml(avatar)}</span>`;
+  const bg = color || '#64748b';
+  return `<span class="avatar ${size}" style="background:${bg}22;border-color:${bg}55"><span class="avatar-emoji">${escapeHtml(avatar)}</span></span>`;
+}
+
+// Renderiza o avatar de um usuário. Se ele tiver foto (hasPhoto), mostra a foto
+// enviada em /api/avatar/<id>; caso contrário, cai no emoji (campo `avatar`).
+// Aceita o objeto do usuário: { id, avatar, color, hasPhoto, photoToken? }.
+export function userAvatarHtml(user, size = '') {
+  const u = user && typeof user === 'object' ? user : { avatar: user };
+  const avatar = u.avatar || '👤';
+  const bg = u.color || '#64748b';
+  const style = `background:${bg}22;border-color:${bg}55`;
+  if (u.hasPhoto && u.id != null) {
+    const src = `/api/avatar/${encodeURIComponent(u.id)}${u.photoToken ? `?v=${encodeURIComponent(u.photoToken)}` : ''}`;
+    // Se a imagem falhar (404), volta para o emoji removendo a classe has-photo.
+    return `<span class="avatar ${size} has-photo" style="${style}">`
+      + `<img class="avatar-img" src="${src}" alt="" loading="lazy" onerror="this.closest('.avatar').classList.remove('has-photo')">`
+      + `<span class="avatar-emoji">${escapeHtml(avatar)}</span></span>`;
+  }
+  return `<span class="avatar ${size}" style="${style}"><span class="avatar-emoji">${escapeHtml(avatar)}</span></span>`;
 }
 
 export function openModal(html, cls = '') {

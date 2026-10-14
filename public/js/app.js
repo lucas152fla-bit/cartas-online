@@ -1,6 +1,6 @@
 import { api, setToken, getToken } from './api.js';
 import { state, upsertConversation, sortConversations, totalUnread, totalFriendRequests } from './state.js';
-import { $, $$, escapeHtml, toast, formatTime, formatDateTime, avatarHtml, openModal, closeModal, debounce } from './ui.js';
+import { $, $$, escapeHtml, toast, formatTime, formatDateTime, avatarHtml, userAvatarHtml, openModal, closeModal, debounce } from './ui.js';
 import { initBlackjack, enterJogar, openCreateTable, leaveTable, openInvite, openRank } from './blackjack.js';
 import { initPoker, enterPoker, openPokerCreate, leavePokerTable } from './poker.js';
 import { avatarSpec, characterCanvas, AVATAR_SKINS, AVATAR_HAIRS, AVATAR_SHIRTS, AVATAR_HATS, HAT_LABEL, AVATAR_DEFAULTS } from './avatar3d.js';
@@ -10,9 +10,21 @@ import { initSound, playSfx } from './sound.js';
 const AVATARS = ['🂡', '🐯', '🦊', '🐼', '🐵', '🦁', '🐸', '🐙', '🦉', '🐳', '🎩', '👑', '😎', '🤠', '👽', '🤖', '🍀', '⚡', '🔥', '💎'];
 let charPick = { ...AVATAR_DEFAULTS };
 let celebPick = 'confetti';
+// undefined = sem mudança | string data URL = nova foto | null = remover
+let pendingPhoto;
+let supportPosts = [];
 let socket = null;
 let typingTimer = null;
 const typingTimeouts = {};
+
+// Avatar de uma conversa: em DM usa a foto do outro participante quando existe.
+function convAvatar(conv, size = '') {
+  if (conv && conv.type === 'dm' && Array.isArray(conv.members)) {
+    const other = conv.members.find((m) => m.id !== state.user?.id) || conv.members[0];
+    if (other) return userAvatarHtml(other, size);
+  }
+  return avatarHtml(conv?.avatar || '👥', conv?.color || '#64748b', size);
+}
 
 function connectSocket() {
   if (!window.io) return;
@@ -94,7 +106,7 @@ function showAuth(error = '') {
 function renderUserbar() {
   const u = state.user;
   $('#sidebar-user').innerHTML = `
-    ${avatarHtml(u.avatar, u.color)}
+    ${userAvatarHtml(u)}
     <div class="who"><strong>${escapeHtml(u.displayName)}</strong><small>@${escapeHtml(u.nickname)}</small></div>
     <button class="btn ghost" id="logout-btn" title="Sair">⎋</button>`;
   $('#logout-btn').onclick = () => {
@@ -107,12 +119,13 @@ function renderUserbar() {
 function switchNav(nav) {
   state.nav = nav;
   $$('.nav-btn').forEach((b) => b.classList.toggle('active', b.dataset.nav === nav));
-  ['conversas', 'jogar', 'amigos', 'carteira', 'perfil'].forEach((n) => {
+  ['conversas', 'jogar', 'amigos', 'suporte', 'carteira', 'perfil'].forEach((n) => {
     $(`#pane-${n}`).classList.toggle('hidden', n !== nav);
   });
   $('.sidebar').classList.remove('open');
   if (nav === 'perfil') renderProfile();
   if (nav === 'amigos') renderFriends();
+  if (nav === 'suporte') renderSupport();
   if (nav === 'carteira') renderWallet();
   if (nav === 'jogar') showGame(currentGame);
 }
@@ -148,6 +161,16 @@ async function refreshWallet() {
   renderUserbar();
 }
 
+async function refreshMe() {
+  try {
+    const { user, wallet } = await api.me();
+    state.user = { ...state.user, ...user };
+    if (wallet) state.wallet = wallet;
+  } catch {
+    // mantém o que já temos
+  }
+}
+
 function renderConversations() {
   const list = $('#convo-list');
   if (!state.conversations.length) {
@@ -155,7 +178,7 @@ function renderConversations() {
   } else {
     list.innerHTML = state.conversations.map((c) => `
       <button class="convo-item ${c.id === state.activeConversationId ? 'active' : ''}" data-conv="${c.id}">
-        ${avatarHtml(c.avatar, c.color)}
+        ${convAvatar(c)}
         <span class="body">
           <strong>${escapeHtml(c.name)}</strong>
           <small>${c.lastMessage ? `${escapeHtml(c.lastMessage.senderName || '')}: ${escapeHtml(c.lastMessage.body)}` : 'Sem mensagens'}</small>
@@ -176,7 +199,7 @@ function renderFriends() {
   box.innerHTML = friends.length
     ? friends.map((f) => `
       <button class="friend-item" data-friend="${f.id}">
-        ${avatarHtml(f.avatar, f.color)}
+        ${userAvatarHtml(f)}
         <span class="grow">
           <strong>${escapeHtml(f.displayName)} <span class="online-dot ${state.online.has(f.id) ? 'on' : ''}"></span></strong>
           <small>@${escapeHtml(f.nickname)}${f.statusText ? ' · ' + escapeHtml(f.statusText) : ''}</small>
@@ -192,7 +215,7 @@ function renderFriends() {
   let html = '';
   if (incoming.length) {
     html += `<div class="req-block"><h4>Pedidos recebidos</h4>${incoming.map((r) => `
-      <div class="req-row">${avatarHtml(r.avatar, r.color, 'sm')}
+      <div class="req-row">${userAvatarHtml(r, 'sm')}
         <span class="grow">${escapeHtml(r.displayName)} <small>@${escapeHtml(r.nickname)}</small></span>
         <span class="req-actions">
           <button class="btn primary" data-accept="${r.requestId}">Aceitar</button>
@@ -202,7 +225,7 @@ function renderFriends() {
   }
   if (outgoing.length) {
     html += `<div class="req-block"><h4>Pedidos enviados</h4>${outgoing.map((r) => `
-      <div class="req-row">${avatarHtml(r.avatar, r.color, 'sm')}
+      <div class="req-row">${userAvatarHtml(r, 'sm')}
         <span class="grow">${escapeHtml(r.displayName)} <small>aguardando…</small></span>
         <button class="btn ghost" data-cancel="${r.id}">Cancelar</button>
       </div>`).join('')}</div>`;
@@ -220,7 +243,7 @@ async function openProfileCard(userId) {
   const isMe = user.id === state.user.id;
   openModal(`
     <div class="avatar-preview">
-      ${avatarHtml(user.avatar, user.color, 'lg')}
+      ${userAvatarHtml(user, 'lg')}
       <div>
         <h3 style="margin:0">${escapeHtml(user.displayName)}</h3>
         <div style="color:var(--muted)">@${escapeHtml(user.nickname)} · ${online ? 'online' : 'offline'}</div>
@@ -254,7 +277,7 @@ async function openChat(convId) {
   const chat = $('#chat-pane');
   chat.classList.remove('hidden');
   requestAnimationFrame(() => chat.classList.add('open'));
-  $('#chat-avatar').innerHTML = conv ? avatarHtml(conv.avatar, conv.color) : '';
+  $('#chat-avatar').innerHTML = conv ? convAvatar(conv) : '';
   $('#chat-name').textContent = conv ? conv.name : '';
   renderChatSub(conv);
   $('#chat-add-member').style.display = conv && conv.type === 'group' ? '' : 'none';
@@ -303,8 +326,12 @@ function renderMessages() {
       </div>`;
     }
     const showSender = conv && conv.type !== 'dm';
+    const member = conv?.members?.find((mm) => mm.id === m.senderId);
+    const senderAvatar = member
+      ? userAvatarHtml(member, 'sm')
+      : avatarHtml(m.senderAvatar || '👤', m.senderColor || '#64748b', 'sm');
     return `<div class="msg">
-      ${avatarHtml(m.senderAvatar || '👤', m.senderColor || '#64748b', 'sm')}
+      ${senderAvatar}
       <div class="bubble">
         ${showSender ? `<div class="sender">${escapeHtml(m.senderName || '')}</div>` : ''}
         <div>${escapeHtml(m.body)}</div>
@@ -404,14 +431,71 @@ function renderCharCustomizer() {
   mark('hat', charPick.hat);
 }
 
+// Desenha a foto escolhida num canvas 256x256 (recorte quadrado "cover") e
+// gera um JPEG enxuto em data URL — mesma imagem que o PATCH /api/me espera.
+function handlePhotoFile(file) {
+  if (!file) return;
+  if (!file.type.startsWith('image/')) return toast('Escolha um arquivo de imagem.');
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const S = 256;
+      const canvas = document.createElement('canvas');
+      canvas.width = S;
+      canvas.height = S;
+      const ctx = canvas.getContext('2d');
+      const scale = Math.max(S / img.width, S / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      ctx.fillStyle = '#0a1410';
+      ctx.fillRect(0, 0, S, S);
+      ctx.drawImage(img, (S - w) / 2, (S - h) / 2, w, h);
+      pendingPhoto = canvas.toDataURL('image/jpeg', 0.82);
+      renderAvatarPreview();
+      toast('Foto pronta! Toque em "Salvar perfil" para valer.');
+    };
+    img.onerror = () => toast('Não consegui abrir essa imagem.');
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderAvatarPreview() {
+  const u = state.user;
+  const form = $('#profile-form');
+  const color = form.color.value || u.color;
+  const emoji = form.avatar.value || u.avatar;
+  const name = form.displayName.value || u.displayName;
+  let av;
+  if (typeof pendingPhoto === 'string') {
+    av = `<span class="avatar lg has-photo" style="background:${color}22;border-color:${color}55"><img class="avatar-img" src="${pendingPhoto}" alt=""></span>`;
+  } else {
+    const hasPhoto = pendingPhoto === null ? false : !!u.hasPhoto;
+    av = userAvatarHtml({ id: u.id, avatar: emoji, color, hasPhoto, photoToken: u.photoToken }, 'lg');
+  }
+  $('#avatar-preview').innerHTML = `${av}<div><strong>${escapeHtml(name)}</strong><div style="color:var(--muted)">@${escapeHtml(u.nickname)}</div></div>`;
+  const hasAnyPhoto = typeof pendingPhoto === 'string' || (pendingPhoto !== null && !!u.hasPhoto);
+  $('#btn-remove-photo').classList.toggle('hidden', !hasAnyPhoto);
+}
+
 function renderProfile() {
   const u = state.user;
   const form = $('#profile-form');
+  pendingPhoto = undefined;
   form.displayName.value = u.displayName;
   form.avatar.value = u.avatar;
   form.color.value = u.color;
   form.statusText.value = u.statusText || '';
   form.bio.value = u.bio || '';
+  const email = $('#account-email');
+  if (email) email.value = u.email || '';
+  const pwWrap = $('#current-password-wrap');
+  if (pwWrap) pwWrap.classList.toggle('hidden', !u.hasPassword);
+  const pw = $('#account-password');
+  if (pw) pw.value = '';
+  const cur = $('#account-current');
+  if (cur) cur.value = '';
   charPick = avatarSpec(u);
   celebPick = u.celebration || 'confetti';
   renderCharCustomizer();
@@ -426,11 +510,85 @@ function renderProfile() {
       };
     });
   }
-  $('#avatar-preview').innerHTML = `${avatarHtml(u.avatar, u.color, 'lg')}<div><strong>${escapeHtml(u.displayName)}</strong><div style="color:var(--muted)">@${escapeHtml(u.nickname)}</div></div>`;
+  renderAvatarPreview();
   $('#emoji-row').innerHTML = AVATARS.map((e) => `<button type="button" data-emoji="${e}">${e}</button>`).join('');
   $$('#emoji-row button').forEach((b) => {
-    b.onclick = () => { form.avatar.value = b.dataset.emoji; $('#avatar-preview').innerHTML = `${avatarHtml(b.dataset.emoji, form.color.value, 'lg')}<div><strong>${escapeHtml(form.displayName.value)}</strong><div style="color:var(--muted)">@${escapeHtml(u.nickname)}</div></div>`; };
+    b.onclick = () => { form.avatar.value = b.dataset.emoji; renderAvatarPreview(); };
   });
+}
+
+// --- Mural de suporte (público) ---
+
+function normalizeAuthor(a) {
+  if (!a) return { id: null, nickname: '', displayName: 'Anônimo', avatar: '👤', color: '#64748b', hasPhoto: false };
+  if (a.displayName != null || a.hasPhoto != null) return a;
+  return {
+    id: a.id,
+    nickname: a.nickname,
+    displayName: a.display_name || a.nickname || 'Anônimo',
+    avatar: a.avatar,
+    color: a.color,
+    hasPhoto: !!a.avatar_image,
+  };
+}
+
+function normalizeSupportPost(p) {
+  return { id: p.id, body: p.body, createdAt: p.createdAt || p.created_at, author: normalizeAuthor(p.author) };
+}
+
+async function renderSupport() {
+  const list = $('#support-list');
+  list.innerHTML = '<p class="muted">Carregando o mural…</p>';
+  try {
+    const { posts } = await api.support(100);
+    supportPosts = (posts || []).map(normalizeSupportPost);
+  } catch (e) {
+    list.innerHTML = `<p class="muted">${escapeHtml(e.message)}</p>`;
+    return;
+  }
+  renderSupportPosts();
+}
+
+function renderSupportPosts() {
+  const list = $('#support-list');
+  if (!supportPosts.length) {
+    list.innerHTML = '<div class="support-empty"><span class="support-empty-ico">💡</span><p>Ninguém comentou ainda. Escreva a primeira ideia!</p></div>';
+    return;
+  }
+  list.innerHTML = supportPosts.map((p) => {
+    const a = p.author;
+    const mine = a.id != null && a.id === state.user.id;
+    return `<article class="support-post" data-id="${p.id}">
+      ${userAvatarHtml(a, 'md')}
+      <div class="support-body">
+        <div class="support-head">
+          <strong>${escapeHtml(a.displayName || a.nickname || 'Anônimo')}</strong>
+          <span class="support-when">${formatDateTime(p.createdAt)}</span>
+        </div>
+        <p class="support-text">${escapeHtml(p.body)}</p>
+      </div>
+      ${mine ? `<button class="btn ghost support-del" data-del="${p.id}" title="Apagar" aria-label="Apagar publicação">🗑️</button>` : ''}
+    </article>`;
+  }).join('');
+  $$('.support-del', list).forEach((b) => {
+    b.onclick = async () => {
+      const id = Number(b.dataset.del);
+      if (!confirm('Apagar esta publicação?')) return;
+      try {
+        await api.deleteSupportPost(id);
+        supportPosts = supportPosts.filter((p) => p.id !== id);
+        renderSupportPosts();
+        toast('Publicação apagada.');
+      } catch (e) {
+        toast(e.message);
+      }
+    };
+  });
+}
+
+function updateSupportCount() {
+  const input = $('#support-input');
+  if (input) $('#support-count').textContent = `${input.value.length}/1000`;
 }
 
 function openGroupModal() {
@@ -440,7 +598,7 @@ function openGroupModal() {
     <h3>Novo grupo</h3>
     <label>Nome do grupo<input id="group-name" maxlength="60" placeholder="Mesa do poker" /></label>
     <div>${friends.map((f) => `
-      <label class="member-pick"><input type="checkbox" value="${f.id}" /> ${avatarHtml(f.avatar, f.color, 'sm')} <span>${escapeHtml(f.displayName)}</span></label>`).join('')}</div>
+      <label class="member-pick"><input type="checkbox" value="${f.id}" /> ${userAvatarHtml(f, 'sm')} <span>${escapeHtml(f.displayName)}</span></label>`).join('')}</div>
     <div class="modal-actions">
       <button class="btn ghost" id="group-cancel">Cancelar</button>
       <button class="btn primary" id="group-create">Criar</button>
@@ -467,7 +625,7 @@ async function openAddMemberModal() {
   openModal(`
     <h3>Adicionar ao grupo</h3>
     <div>${candidates.map((f) => `
-      <label class="member-pick"><input type="checkbox" value="${f.id}" /> ${avatarHtml(f.avatar, f.color, 'sm')} <span>${escapeHtml(f.displayName)}</span></label>`).join('')}</div>
+      <label class="member-pick"><input type="checkbox" value="${f.id}" /> ${userAvatarHtml(f, 'sm')} <span>${escapeHtml(f.displayName)}</span></label>`).join('')}</div>
     <div class="modal-actions">
       <button class="btn ghost" id="add-cancel">Cancelar</button>
       <button class="btn primary" id="add-confirm">Adicionar</button>
@@ -484,18 +642,65 @@ async function openAddMemberModal() {
   };
 }
 
+async function finishAuth(data) {
+  setToken(data.token);
+  state.user = data.user;
+  state.wallet = data.wallet;
+  try {
+    const me = await api.me();
+    state.user = me.user;
+    state.wallet = me.wallet;
+  } catch {
+    // segue com o que veio do login
+  }
+  await enterApp();
+}
+
+function setAuthMode(mode) {
+  $$('#auth-modes .tab').forEach((b) => b.classList.toggle('active', b.dataset.authTab === mode));
+  $$('[data-auth-pane]').forEach((el) => el.classList.toggle('hidden', el.dataset.authPane !== mode));
+}
+
+function setHaveMode(mode) {
+  $$('#have-modes .tab').forEach((b) => b.classList.toggle('active', b.dataset.haveTab === mode));
+  $$('[data-have-pane]').forEach((el) => el.classList.toggle('hidden', el.dataset.havePane !== mode));
+}
+
 function wireEvents() {
   window.addEventListener('open-chat', (e) => {
     if (typeof e.detail === 'number') openChat(e.detail);
   });
+
+  $$('#auth-modes .tab').forEach((b) => b.onclick = () => setAuthMode(b.dataset.authTab));
+  $$('#have-modes .tab').forEach((b) => b.onclick = () => setHaveMode(b.dataset.haveTab));
+
   $('#enter-form').onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;
+    $('#auth-error').textContent = '';
     try {
       const data = await api.enter({ nickname: f.nickname.value, displayName: f.displayName.value });
-      setToken(data.token);
-      state.user = data.user; state.wallet = data.wallet;
-      await enterApp();
+      await finishAuth(data);
+    } catch (err) { $('#auth-error').textContent = err.message; }
+  };
+
+  $('#reserve-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    $('#auth-error').textContent = '';
+    try {
+      const data = await api.loginReserve({ nickname: f.nickname.value, email: f.email.value });
+      await finishAuth(data);
+    } catch (err) { $('#auth-error').textContent = err.message; }
+  };
+
+  $('#password-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    $('#auth-error').textContent = '';
+    try {
+      const data = await api.login({ nickname: f.nickname.value, password: f.password.value });
+      await finishAuth(data);
     } catch (err) { $('#auth-error').textContent = err.message; }
   };
 
@@ -562,7 +767,7 @@ function wireEvents() {
     const { users } = await api.searchUsers(q);
     box.innerHTML = users.map((u) => `
       <div class="search-result">
-        ${avatarHtml(u.avatar, u.color, 'sm')}
+        ${userAvatarHtml(u, 'sm')}
         <span class="grow"><strong>${escapeHtml(u.displayName)}</strong><small>@${escapeHtml(u.nickname)}</small></span>
         <button class="btn primary" data-add="${u.id}">Adicionar</button>
       </div>`).join('') || '<div class="search-result">Ninguém encontrado.</div>';
@@ -576,7 +781,7 @@ function wireEvents() {
   $('#profile-form').onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target;
-    const data = await api.updateProfile({
+    const payload = {
       displayName: f.displayName.value,
       avatar: f.avatar.value,
       color: f.color.value,
@@ -587,12 +792,86 @@ function wireEvents() {
       shirt: charPick.shirt,
       hat: charPick.hat,
       celebration: celebPick,
-    });
-    state.user = data.user;
-    toast('Perfil salvo!');
-    renderProfile();
-    renderUserbar();
+    };
+    // Só envia avatarImage quando a foto mudou (nova foto ou remoção).
+    if (pendingPhoto !== undefined) payload.avatarImage = pendingPhoto;
+    try {
+      const data = await api.updateProfile(payload);
+      state.user = {
+        ...state.user,
+        ...data.user,
+        photoToken: pendingPhoto !== undefined ? Date.now() : state.user.photoToken,
+      };
+      pendingPhoto = undefined;
+      toast('Perfil salvo!');
+      renderProfile();
+      renderUserbar();
+    } catch (err) {
+      toast(err.message);
+    }
   };
+
+  // Preview ao vivo do avatar no perfil
+  const pf = $('#profile-form');
+  pf.color.oninput = renderAvatarPreview;
+  pf.displayName.oninput = renderAvatarPreview;
+
+  $('#btn-choose-photo').onclick = () => $('#avatar-file').click();
+  $('#avatar-file').onchange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    handlePhotoFile(file);
+    e.target.value = '';
+  };
+  $('#btn-remove-photo').onclick = () => {
+    pendingPhoto = null;
+    renderAvatarPreview();
+    toast('A foto será removida ao salvar.');
+  };
+
+  $('#email-save').onclick = async () => {
+    const value = $('#account-email').value.trim();
+    try {
+      await api.updateProfile({ email: value || null });
+      await refreshMe();
+      toast('Email salvo!');
+      renderProfile();
+    } catch (err) { toast(err.message); }
+  };
+
+  $('#password-save').onclick = async () => {
+    const newPassword = $('#account-password').value;
+    if (!newPassword) return toast('Digite a nova senha.');
+    const payload = { newPassword };
+    if (state.user.hasPassword) payload.currentPassword = $('#account-current').value;
+    try {
+      await api.updateProfile(payload);
+      await refreshMe();
+      toast('Senha salva!');
+      renderProfile();
+    } catch (err) { toast(err.message); }
+  };
+
+  $('#support-form').onsubmit = async (e) => {
+    e.preventDefault();
+    const input = $('#support-input');
+    const body = input.value.trim();
+    if (!body) return toast('Escreva algo antes de publicar.');
+    const btn = $('#support-submit');
+    btn.disabled = true;
+    try {
+      const { post } = await api.createSupportPost(body);
+      supportPosts.unshift(normalizeSupportPost(post));
+      input.value = '';
+      updateSupportCount();
+      renderSupportPosts();
+      toast('Publicado!');
+    } catch (err) {
+      toast(err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+  $('#support-input').oninput = updateSupportCount;
 
   $('#convert-from').onchange = () => {
     if ($('#convert-from').value === $('#convert-to').value) $('#convert-to').value = $('#convert-from').value === 'gemas' ? 'fichas' : 'gemas';
