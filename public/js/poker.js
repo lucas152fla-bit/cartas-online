@@ -69,6 +69,22 @@ const LAYOUTS = {
   6: [[50, 88], [11, 66], [16, 26], [50, 12], [84, 26], [89, 66]],
 };
 
+// Layout para telas estreitas: como as cadeiras laterais de 5-6 jogadores ficam
+// muito próximas na cena 4:3 do celular, separamos em colunas (esquerda/direita)
+// em alturas diferentes para não sobrepor.
+const MOBILE_LAYOUTS = {
+  1: [[50, 86]],
+  2: [[50, 86], [50, 12]],
+  3: [[50, 86], [11, 40], [89, 40]],
+  4: [[50, 86], [10, 52], [50, 12], [90, 52]],
+  5: [[50, 86], [10, 58], [24, 14], [76, 14], [90, 58]],
+  6: [[50, 86], [10, 22], [10, 60], [50, 12], [90, 22], [90, 60]],
+};
+
+function isNarrow() {
+  return window.innerWidth <= 640;
+}
+
 export function initPoker({ socket, refreshWallet }) {
   sock = socket;
   onWalletChange = refreshWallet || (() => {});
@@ -82,7 +98,10 @@ export function initPoker({ socket, refreshWallet }) {
       if (mine) playSfx((mine.net ?? 0) > 0 ? 'win' : (mine.net ?? 0) < 0 ? 'lose' : 'coin');
       if (mine && (mine.net ?? 0) > 0 && state.user?.celebration) {
         const scene = $('#pk-scene');
-        if (scene) celebrate(state.user.celebration, scene);
+        // Usa o wrap (persistente) em vez da cena, cujo innerHTML é
+        // reescrito logo abaixo em renderTable() e apagaria a animação.
+        const host = scene ? (scene.closest('.pk-scene-wrap') || scene.parentElement) : null;
+        if (host) celebrate(state.user.celebration, host);
       }
     }
     if (prev && prev.state === 'waiting' && st.state === 'playing') playSfx('deal');
@@ -399,7 +418,7 @@ function renderTable(st) {
   const scene = $('#pk-scene');
   const myIndex = Math.max(0, st.players.findIndex((p) => p.userId === state.user.id));
   const n = st.players.length || 1;
-  const layout = LAYOUTS[n] || LAYOUTS[6];
+  const layout = (isNarrow() ? MOBILE_LAYOUTS : LAYOUTS)[n] || LAYOUTS[6];
   const ordered = [];
   for (let k = 0; k < n; k++) ordered.push(st.players[(myIndex + k) % n]);
 

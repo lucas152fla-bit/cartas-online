@@ -123,7 +123,7 @@ label input, label textarea { margin-top: 6px; }
 .sidebar-user .who strong { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-user .who small { color: var(--muted); }
 
-.content { flex: 1; position: relative; overflow-y: auto; padding: 22px; padding-top: max(22px, env(safe-area-inset-top)); }
+.content { flex: 1; position: relative; overflow-y: auto; overflow-x: hidden; padding: 22px; padding-top: max(22px, env(safe-area-inset-top)); }
 .mobile-menu { display: none; }
 .pane { max-width: 720px; margin: 0 auto; }
 .pane-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
@@ -442,6 +442,7 @@ label input, label textarea { margin-top: 6px; }
 
 /* ——— cena da mesa (felt oval) ——— */
 .bj-scene-wrap {
+  position: relative;
   background:
     radial-gradient(900px 500px at 50% 0%, #123628, #0a1410 80%);
   border: 1px solid var(--line);
@@ -554,7 +555,12 @@ label input, label textarea { margin-top: 6px; }
   white-space: nowrap;
 }
 .dealer-slot .dealer-label b { color: var(--gold); }
-.croupier { filter: drop-shadow(0 4px 6px rgba(0,0,0,.4)); }
+.croupier { display: inline-flex; filter: drop-shadow(0 4px 6px rgba(0,0,0,.4)); }
+/* O <img class="doll"> gerado pelo avatar3d não tem tamanho próprio: sem esta
+   regra ele era desenhado no tamanho natural do canvas (DPI incluso), virando
+   um "rosto gigante" em cima da mesa. */
+.croupier .doll { width: 72px; height: 72px; max-width: none; }
+.doll { display: block; }
 
 /* assentos em volta */
 .opp-wrap { position: absolute; transform: translate(-50%, -50%); z-index: 3; display: flex; flex-direction: column; align-items: center; gap: 4px; }
@@ -838,6 +844,7 @@ label input, label textarea { margin-top: 6px; }
 .rank-row.top { border-color: var(--gold); background: rgba(231,193,74,.08); }
 .rank-pos { width: 44px; text-align: center; font-weight: 800; }
 .rank-ava { display: flex; }
+.rank-ava .doll { width: 48px; height: 48px; }
 .rank-mid { flex: 1; min-width: 0; }
 .rank-mid strong { display: block; }
 .rank-mid small { font-size: 11px; }
@@ -975,13 +982,18 @@ label input, label textarea { margin-top: 6px; }
   @supports (aspect-ratio: 4 / 3) {
     .bj-scene { aspect-ratio: 4 / 3; padding-bottom: 0; }
   }
-  .seat-chip { width: 78px; }
-  .seat-chip .char-2d .doll { transform: scale(.92); transform-origin: bottom center; }
-  .hand .card.big { width: 54px; height: 78px; font-size: 15px; }
+  .seat-chip { width: 58px; padding: 3px 4px; }
+  .seat-chip .char-2d { margin: 2px 0 1px; }
+  .seat-chip .char-2d .doll { width: 42px; height: 42px; }
+  .seat-chip .seat-name { font-size: 9.5px; }
+  .hand .card.big { width: 50px; height: 72px; font-size: 14px; }
   .me-zone { width: 100%; }
-  .dealer-slot .dealer-cards { min-height: 48px; }
-  .opp-cards .card { width: 44px; height: 64px; font-size: 12px; }
-  .bj-me-bar .me-doll .doll { width: 58px; height: 58px; }
+  .dealer-slot .dealer-cards { min-height: 42px; }
+  .dealer-slot .croupier .doll { width: 54px; height: 54px; }
+  .dealer-slot .speech-bubble { max-width: 130px; font-size: 11px; }
+  .opp-cards .card { width: 40px; height: 58px; font-size: 11px; }
+  .bj-me-bar .me-doll .doll { width: 52px; height: 52px; }
+  .turn-timer { font-size: 10px; padding: 1px 5px; }
 }
 @media (max-width: 420px) {
   .deck-picker { grid-template-columns: 1fr; }
@@ -989,6 +1001,12 @@ label input, label textarea { margin-top: 6px; }
   .card.big { width: 46px; height: 68px; font-size: 13px; }
   .opp-cards .card { width: 38px; height: 56px; font-size: 11px; }
   .settings-grid { grid-template-columns: 1fr; }
+  .seat-chip { width: 50px; }
+  .seat-chip .char-2d .doll { width: 36px; height: 36px; }
+  .seat-chip .seat-name { font-size: 8.5px; }
+  .hand .card.big { width: 42px; height: 62px; }
+  .dealer-slot .croupier .doll { width: 46px; height: 46px; }
+  .bj-me-bar .me-doll .doll { width: 46px; height: 46px; }
 }
 
 /* relógios de fase e contagens */
@@ -1218,12 +1236,24 @@ label input, label textarea { margin-top: 6px; }
 @media (max-width: 640px) {
   .pk-scene { padding-bottom: 78%; }
   @supports (aspect-ratio: 4 / 3) { .pk-scene { aspect-ratio: 4 / 3; padding-bottom: 0; } }
-  .pk-seat-box { width: 84px; padding: 3px 5px 4px; }
-  .pk-seat-box .char-2d .doll { width: 48px; height: 48px; }
-  .pk-seat-name { font-size: 10.5px; }
-  .pk-seat-stack { font-size: 9.5px; }
-  .pk-board .card.med { width: 40px; height: 58px; font-size: 12px; }
-  .pk-hero .card.big { width: 54px; height: 78px; }
+  .pk-seat-box { width: 62px; padding: 3px 4px 4px; }
+  .pk-seat-box .char-2d { margin: 1px 0; }
+  .pk-seat-box .char-2d .doll { width: 40px; height: 40px; }
+  .pk-seat-name { font-size: 9.5px; }
+  .pk-seat-stack { font-size: 9px; }
+  .pk-seat-cards .card { width: 30px; height: 44px; font-size: 10px; }
+  .pk-board .card.med { width: 38px; height: 54px; font-size: 11px; }
+  .pk-hero .card.big { width: 50px; height: 72px; }
+  .pk-hero-doll .doll { width: 56px; height: 56px; }
+  .pk-pot { font-size: 12px; padding: 3px 9px; }
+  .pk-emote-bubble { max-width: 150px; }
+}
+@media (max-width: 420px) {
+  .pk-seat-box { width: 54px; }
+  .pk-seat-box .char-2d .doll { width: 34px; height: 34px; }
+  .pk-seat-name { font-size: 8.5px; }
+  .pk-hero .card.big { width: 44px; height: 64px; }
+  .pk-hero-doll .doll { width: 48px; height: 48px; }
 }
 
 .pk-emote-bubble {

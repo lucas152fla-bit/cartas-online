@@ -306,6 +306,10 @@ function seatMood(p, st, roundDeal) {
 function seatPositions(total) {
   const spots = [];
   if (total <= 0) return spots;
+  const narrow = window.innerWidth <= 640;
+  // Em telas estreitas os assentos ficam mais afastados das bordas para não
+  // serem cortados nem encostar uns nos outros.
+  const clamps = narrow ? [10, 90, 14, 96] : [6, 94, 4, 96];
   if (total === 1) {
     const a = (-90 * Math.PI) / 180;
     spots.push([50 + 42 * Math.cos(a), 50 + 44 * Math.sin(a)]);
@@ -318,7 +322,7 @@ function seatPositions(total) {
     const a = (deg * Math.PI) / 180;
     const x = 50 + 42 * Math.cos(a);
     const y = 50 + 45 * Math.sin(a);
-    spots.push([Math.max(6, Math.min(94, x)), Math.max(4, Math.min(96, y))]);
+    spots.push([Math.max(clamps[0], Math.min(clamps[1], x)), Math.max(clamps[2], Math.min(clamps[3], y))]);
   }
   return spots;
 }
@@ -648,7 +652,11 @@ export function renderTable(st) {
   if (prevState === 'playing' && st.state === 'finished') {
     scene.classList.add('round-done');
     showRoundBanner(st);
-    if (mePlayer && mePlayer.delta > 0 && state.user?.celebration) celebrate(state.user.celebration, scene);
+    if (mePlayer && mePlayer.delta > 0 && state.user?.celebration) {
+      // Monta o efeito no wrap (que não é recriado pelo innerHTML da cena),
+      // senão a próxima renderização apagaria a animação.
+      celebrate(state.user.celebration, scene.closest('.bj-scene-wrap') || scene.parentElement || scene);
+    }
     clearTimeout(dealTimer);
     dealTimer = setTimeout(() => {
       scene.classList.remove('round-done');

@@ -17,6 +17,12 @@ export function celebrate(style, container) {
   if (now - lastBurst < 2000) return;
   lastBurst = now;
   const root = container || document.body;
+  // O container precisa ser a referência do posicionamento absoluto do efeito.
+  // Sem isso o overlay "escapa" para o ancestral posicionado mais próximo e
+  // pode ficar atrás/e fora da mesa.
+  if (root !== document.body && getComputedStyle(root).position === 'static') {
+    root.style.position = 'relative';
+  }
   const el = document.createElement('div');
   el.className = `celebrate celebrate-${id}`;
   if (id === 'confetti' || id === 'coins') fallPieces(el, id === 'coins');

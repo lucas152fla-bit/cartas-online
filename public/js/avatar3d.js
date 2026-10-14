@@ -25,7 +25,11 @@ export function avatarSpec(user) {
 }
 
 export function characterCanvas(spec = {}, size = 96, opts = {}) {
-  const dpr = typeof opts === 'number' ? opts : (opts?.dpr || window.devicePixelRatio || 1);
+  const rawDpr = typeof opts === 'number' ? opts : (opts?.dpr || window.devicePixelRatio || 1);
+  // Limita o fator de escala: evita canvas (e imagens geradas) gigantes em
+  // telas com devicePixelRatio alto, que apareciam em tamanho natural quando
+  // nenhuma regra de CSS definia a largura do <img class="doll">.
+  const dpr = Math.min(Math.max(rawDpr, 1), 2);
   const sit = typeof opts === 'number' ? false : !!opts?.sit;
   const emote = typeof opts === 'object' ? (opts?.emote || null) : null;
   const canvas = document.createElement('canvas');
@@ -33,6 +37,7 @@ export function characterCanvas(spec = {}, size = 96, opts = {}) {
   canvas.height = Math.round(size * dpr);
   canvas.style.width = `${size}px`;
   canvas.style.height = `${size}px`;
+  canvas.style.maxWidth = '100%';
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
   drawCharacter(ctx, spec, size, { sit, emote });
